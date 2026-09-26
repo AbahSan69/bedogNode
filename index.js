@@ -9,7 +9,7 @@ app.use(express.json());
 
 let sock;
 let isConnected = false;
-const API_KEY = '123456789'; // HARUS sama persis dengan WA_GATEWAY_KEY di .env Laravel
+const API_KEY = process.env.WA_GATEWAY_KEY;
 
 async function startWA() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
@@ -17,7 +17,7 @@ async function startWA() {
     console.log(`Menggunakan WA Web versi ${version.join('.')}, terbaru: ${isLatest}`);
 
     sock = makeWASocket({
-        version,           // ← tambahan penting
+        version,
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
@@ -32,13 +32,13 @@ async function startWA() {
         }
 
         if (connection === 'close') {
-    isConnected = false;
-    const statusCode = (new Boom(lastDisconnect?.error))?.output?.statusCode;
-    const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
-    console.log('⚠️  Koneksi terputus. StatusCode:', statusCode, '| Reason:', lastDisconnect?.error?.message);
-    console.log('⚠️  Reconnect:', shouldReconnect);
-    if (shouldReconnect) startWA();
-} else if (connection === 'open') {
+            isConnected = false;
+            const statusCode = (new Boom(lastDisconnect?.error))?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            console.log('⚠️  Koneksi terputus. StatusCode:', statusCode, '| Reason:', lastDisconnect?.error?.message);
+            console.log('⚠️  Reconnect:', shouldReconnect);
+            if (shouldReconnect) startWA();
+        } else if (connection === 'open') {
             isConnected = true;
             console.log('✅ WhatsApp Gateway terhubung!');
         }
@@ -48,6 +48,12 @@ async function startWA() {
 }
 
 startWA();
+
+// ── Health check untuk Railway (tanpa perlu API key) ──
+// Railway/monitoring tool sering ping "/" untuk cek service hidup atau tidak.
+app.get('/', (req, res) => {
+    res.json({ status: true, message: 'WA Gateway is running', connected: isConnected });
+});
 
 // ── Logging semua request masuk ──
 app.use((req, res, next) => {
@@ -125,4 +131,6 @@ app.post('/send-text', async (req, res) => {
     }
 });
 
-app.listen(3000, () => console.log('🚀 Gateway jalan di http://localhost:3000'));
+// ── Port dinamis untuk Railway (WAJIB, jangan hardcode 3000) ──
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Gateway jalan di port ${PORT}`));
