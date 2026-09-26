@@ -1,4 +1,4 @@
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, useMultiFileAuthState, DisconnectReason, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const express = require('express');
 const qrcode = require('qrcode-terminal');
@@ -13,8 +13,11 @@ const API_KEY = '123456789'; // HARUS sama persis dengan WA_GATEWAY_KEY di .env 
 
 async function startWA() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`Menggunakan WA Web versi ${version.join('.')}, terbaru: ${isLatest}`);
 
     sock = makeWASocket({
+        version,           // ← tambahan penting
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
@@ -29,11 +32,13 @@ async function startWA() {
         }
 
         if (connection === 'close') {
-            isConnected = false;
-            const shouldReconnect = (new Boom(lastDisconnect?.error))?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('⚠️  Koneksi terputus. Reconnect:', shouldReconnect);
-            if (shouldReconnect) startWA();
-        } else if (connection === 'open') {
+    isConnected = false;
+    const statusCode = (new Boom(lastDisconnect?.error))?.output?.statusCode;
+    const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+    console.log('⚠️  Koneksi terputus. StatusCode:', statusCode, '| Reason:', lastDisconnect?.error?.message);
+    console.log('⚠️  Reconnect:', shouldReconnect);
+    if (shouldReconnect) startWA();
+} else if (connection === 'open') {
             isConnected = true;
             console.log('✅ WhatsApp Gateway terhubung!');
         }
