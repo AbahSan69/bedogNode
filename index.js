@@ -11,6 +11,11 @@ let sock;
 let isConnected = false;
 const API_KEY = process.env.WA_GATEWAY_KEY;
 
+// Ganti dengan nomor WhatsApp kamu, format internasional TANPA + dan TANPA spasi
+// Contoh: 6289646957741
+const PHONE_NUMBER_FOR_PAIRING = '6289602910492';
+const USE_PAIRING_CODE = true; // true = pakai kode 8 digit, false = pakai QR seperti biasa
+
 async function startWA() {
     const { state, saveCreds } = await useMultiFileAuthState('auth_session');
     const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -23,10 +28,24 @@ async function startWA() {
         printQRInTerminal: false,
     });
 
+    // Kalau belum pernah login (belum ada sesi tersimpan) dan mode pairing aktif,
+    // minta pairing code alih-alih menunggu QR discan
+    if (USE_PAIRING_CODE && !sock.authState.creds.registered) {
+        setTimeout(async () => {
+            try {
+                const code = await sock.requestPairingCode(PHONE_NUMBER_FOR_PAIRING);
+                console.log('🔑 KODE PAIRING KAMU: ' + code);
+                console.log('🔑 Masukkan kode ini di WhatsApp HP: Linked Devices > Link with phone number instead > masukkan kode di atas');
+            } catch (err) {
+                console.log('❌ Gagal request pairing code:', err.message);
+            }
+        }, 3000);
+    }
+
     sock.ev.on('connection.update', (update) => {
         const { connection, lastDisconnect, qr } = update;
 
-        if (qr) {
+        if (qr && !USE_PAIRING_CODE) {
             console.log('📱 Scan QR ini dengan WhatsApp kamu:');
             qrcode.generate(qr, { small: true });
         }
@@ -50,6 +69,7 @@ async function startWA() {
 startWA();
 
 // ── Health check untuk Railway (tanpa perlu API key) ──
+// Railway/monitoring tool sering ping "/" untuk cek service hidup atau tidak.
 app.get('/', (req, res) => {
     res.json({ status: true, message: 'WA Gateway is running', connected: isConnected });
 });
