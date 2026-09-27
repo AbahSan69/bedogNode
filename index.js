@@ -5,7 +5,7 @@ const qrcode = require('qrcode-terminal');
 const pino = require('pino');
 
 const app = express();
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 let sock;
 let isConnected = false;
@@ -50,7 +50,6 @@ async function startWA() {
 startWA();
 
 // ── Health check untuk Railway (tanpa perlu API key) ──
-// Railway/monitoring tool sering ping "/" untuk cek service hidup atau tidak.
 app.get('/', (req, res) => {
     res.json({ status: true, message: 'WA Gateway is running', connected: isConnected });
 });
@@ -78,26 +77,21 @@ app.get('/status', (req, res) => {
 // ── Endpoint kirim dokumen (PDF) ──
 app.post('/send-document', async (req, res) => {
     try {
-        const { target, message, fileUrl, fileName } = req.body;
-        console.log('📩 Permintaan kirim ke:', target, '| File:', fileUrl);
+        const { target, message, fileBase64, fileName } = req.body;
+        console.log('📩 Permintaan kirim ke:', target, '| Ukuran file (base64):', fileBase64 ? fileBase64.length : 0);
 
         if (!isConnected) {
             console.log('❌ WhatsApp belum terkoneksi.');
             return res.status(503).json({ status: false, message: 'WhatsApp belum terkoneksi. Scan QR dulu.' });
         }
 
-        if (!target || !fileUrl) {
-            return res.status(400).json({ status: false, message: 'target & fileUrl wajib diisi' });
+        if (!target || !fileBase64) {
+            return res.status(400).json({ status: false, message: 'target & fileBase64 wajib diisi' });
         }
 
         const jid = target.replace(/[^0-9]/g, '') + '@s.whatsapp.net';
 
-        const fileResponse = await fetch(fileUrl);
-        if (!fileResponse.ok) {
-            console.log('❌ Gagal download file:', fileUrl, '| HTTP', fileResponse.status);
-            return res.status(400).json({ status: false, message: 'Gagal mengunduh file dari fileUrl (HTTP ' + fileResponse.status + ')' });
-        }
-        const buffer = Buffer.from(await fileResponse.arrayBuffer());
+        const buffer = Buffer.from(fileBase64, 'base64');
 
         await sock.sendMessage(jid, {
             document: buffer,
